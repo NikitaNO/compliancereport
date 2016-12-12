@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Compliance Report</title>
+</head>
+<body>
+
+<div id="compliance-content" style="width:auto; padding: 3.8rem;height: 100%" class="panel">
+    <!--<div id="signature" style="display: flex">-->
+    <!--<p align="right" style="width: 30%; margin-right: 10px">Signature</p>-->
+    <!--<canvas id="myCanvas" height="100" style="border:1px solid #000000;width: 60%"></canvas>-->
+    <!--</div>-->
+    <p style="margin-bottom: 0px;"> I, verify all attached logs for <span
+            id="daterange"></span></p>
+    <div align="right" style="margin-bottom: 10px;">
+        <img src="https://dl.dropboxusercontent.com/u/551937608/compliance/eraser-24.png" id="clear">
+    </div>
+    <canvas style="
+  width:100%; border:1px solid black;" id="signature-pad" class="signature-pad"></canvas>
+
+    <!--<div>-->
+    <!--&lt;!&ndash;<button style="margin-bottom: 10px" id="save">Save</button>&ndash;&gt;-->
+    <!--&lt;!&ndash;<button style="margin-bottom: 10px" src="https://dl.dropboxusercontent.com/u/551937608/compliance/eraser-16.png" id="clear">Clear</button>&ndash;&gt;-->
+    <!--</div>-->
+    <div align="center" style="width: 100%;">
+        <input style="width: 100%; margin-bottom: 10px" id="emailInput" type="text" value=""
+               placeholder="Email Address">
+    </div>
+
+    <div id="distressButton-container">
+        <button id="distressButton-call">Send Email</button>
+        <!--<p>Hold the button for 3 seconds to alert a manager</p>-->
+        <!--<div id="distressSent">Distress email sent!</div>-->
+        <div id="result"></div>
+    </div>
+
+
+</div>
+<script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
+<script src="signature_pad.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.17.1/moment.min.js"></script>
+<link rel="stylesheet" href="css/signature-pad.css">
+<script type="text/javascript">
+    geotab.addin.compliance = function (api, state) {
+        var session_id = '';
+        var username = '';
+        var driver_id = '';
+        var db = '';
+        var emailValue = '';
+        var signatureImage = '';
+        var driverName = '';
+        var driverLastName = '';
+        var hosRuleSet = '';
+        var dateRange = '';
+        var signaturePad = new SignaturePad(document.getElementById('signature-pad'), {
+            backgroundColor: 'rgba(255, 255, 255, 1)',
+            penColor: 'rgb(0, 0, 0)'
+        });
+        var cancelImage = document.getElementById('clear');
+
+        cancelImage.addEventListener('click', function (event) {
+            signaturePad.clear();
+        });
+
+        api.getSession(function (cred) {
+            session_id = cred.sessionId;
+            username = cred.userName;
+            db = cred.database;
+        });
+        var endDateMail = moment().format("DD MMM");
+        var startEmail14Date = moment().subtract(14, 'days').format("DD MMM");
+        var startEmail7Date = moment().subtract(7, 'days').format("DD MMM");
+
+
+        var server = window.location.hostname.split('.')[0];
+
+        api.call("Get", {
+            typeName: 'User', search: {'name': username}
+        }, function (result) {
+            driver_id = result[0].id;
+            driverName = result[0].firstName;
+            driverLastName = result[0].lastName;
+            hosRuleSet = result[0].hosRuleSet;
+            if (hosRuleSet.substr(0, 7).toLowerCase() == "america") {
+                document.getElementById("daterange").innerHTML = startEmail7Date + " - " + endDateMail;
+
+                dateRange = startEmail7Date + " - " + endDateMail
+            }else{
+                document.getElementById("daterange").innerHTML = startEmail14Date + " - " + endDateMail;
+                dateRange = startEmail14Date + " - " + endDateMail
+            }
+
+            document.getElementById("drivername").innerHTML = driverName + driverLastName;
+            console.log("Done: ", result);
+        }, function (e) {
+            console.error("Failed:", e);
+        });
+
+
+        var emailInput = document.getElementById("emailInput"),
+                emailInputEntered = function (event) {
+                    emailValue = event.target.value.toLowerCase().trim('');
+                };
+
+        var distressButton = document.getElementById("distressButton-call"),
+                distressSent = document.getElementById("distressSent"),
+                distressTimeout = null,
+                distressPress = function (event) {
+                    signatureImage = signaturePad.toDataURL('image/png');
+                    console.log(signatureImage);
+                    console.log(driver_id, emailValue, session_id, db, username, server, driverName, driverLastName, dateRange );
+                    event.target.classList.add("press");
+                    $.ajax({
+                        type: "POST",
+                        url: 'https://nginx.zenduit.com:3177/email',
+                        contentType: "application/json",
+                        dataType: 'json',
+                        //  timeout: 2000,
+                        data: JSON.stringify({
+                            driverId: driver_id,
+                            sessionId: session_id,
+                            username: username,
+                            database: db,
+                            email: emailValue,
+                            server: server,
+                            signature: signatureImage,
+                            firstName: driverName,
+                            lastName: driverLastName,
+                            dateRange: dateRange
+                        }),
+                        success: function (data) {
+                            console.log('success');
+                            alert("message sent")
+                            console.log(data);
+                        },
+                        error: function (error) {
+                            console.log(error);
+                        }
+                    });
+                },
+                distressStop = function (event) {
+                    event.target.classList.remove("press");
+                    clearTimeout(distressTimeout);
+                };
+
+
+        return {
+            /**
+             *  initialize() is called only once when your custom page is first accessed.
+             *  Use this method to initialize variables required by your addin.
+             */
+            initialize: function (api, state, callback) {
+                callback();
+            },
+            /**
+             *  focus() is called after the user interface has loaded or state has changed.
+             *  Use this method to first interact with the user or elements on the page.
+             */
+            focus: function () {
+
+                distressButton.addEventListener.disabled = true;
+                emailInput.addEventListener("input", emailInputEntered);
+                distressButton.addEventListener("mousedown", distressPress);
+                distressButton.addEventListener("mouseup", distressStop);
+            },
+            /**
+             *  blur() is called when the user is navigating away from your page.
+             *  Use this method to save any required state.
+             */
+            blur: function () {
+                distressButton.removeEventListener("mousedown", distressPress);
+                distressButton.removeEventListener("mouseup", distressStop);
+            }
+        };
+    }
+</script>
+</body>
+</html>
